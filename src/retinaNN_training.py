@@ -9,7 +9,7 @@
 
 
 import numpy as np
-import ConfigParser
+import configparser
 
 from keras.models import Model
 from keras.layers import Input, concatenate, Conv2D, MaxPooling2D, UpSampling2D, Reshape, core, Dropout
@@ -21,43 +21,43 @@ from keras.optimizers import SGD
 
 import sys
 sys.path.insert(0, './lib/')
-from help_functions import *
+from lib.help_functions import *
 
 #function to obtain data for training/testing (validation)
-from extract_patches import get_data_training
+from lib.extract_patches import get_data_training
 
 
 
 #Define the neural network
 def get_unet(n_ch,patch_height,patch_width):
-    inputs = Input(shape=(n_ch,patch_height,patch_width))
-    conv1 = Conv2D(32, (3, 3), activation='relu', padding='same',data_format='channels_first')(inputs)
+    inputs = Input(shape=(patch_height,patch_width,n_ch))
+    conv1 = Conv2D(32, (3, 3), activation='relu', padding='same',data_format='channels_last')(inputs)
     conv1 = Dropout(0.2)(conv1)
-    conv1 = Conv2D(32, (3, 3), activation='relu', padding='same',data_format='channels_first')(conv1)
+    conv1 = Conv2D(32, (3, 3), activation='relu', padding='same',data_format='channels_last')(conv1)
     pool1 = MaxPooling2D((2, 2))(conv1)
     #
-    conv2 = Conv2D(64, (3, 3), activation='relu', padding='same',data_format='channels_first')(pool1)
+    conv2 = Conv2D(64, (3, 3), activation='relu', padding='same',data_format='channels_last')(pool1)
     conv2 = Dropout(0.2)(conv2)
-    conv2 = Conv2D(64, (3, 3), activation='relu', padding='same',data_format='channels_first')(conv2)
+    conv2 = Conv2D(64, (3, 3), activation='relu', padding='same',data_format='channels_last')(conv2)
     pool2 = MaxPooling2D((2, 2))(conv2)
     #
-    conv3 = Conv2D(128, (3, 3), activation='relu', padding='same',data_format='channels_first')(pool2)
+    conv3 = Conv2D(128, (3, 3), activation='relu', padding='same',data_format='channels_last')(pool2)
     conv3 = Dropout(0.2)(conv3)
-    conv3 = Conv2D(128, (3, 3), activation='relu', padding='same',data_format='channels_first')(conv3)
+    conv3 = Conv2D(128, (3, 3), activation='relu', padding='same',data_format='channels_last')(conv3)
 
     up1 = UpSampling2D(size=(2, 2))(conv3)
-    up1 = concatenate([conv2,up1],axis=1)
-    conv4 = Conv2D(64, (3, 3), activation='relu', padding='same',data_format='channels_first')(up1)
+    up1 = concatenate([conv2,up1],axis=3)
+    conv4 = Conv2D(64, (3, 3), activation='relu', padding='same',data_format='channels_last')(up1)
     conv4 = Dropout(0.2)(conv4)
-    conv4 = Conv2D(64, (3, 3), activation='relu', padding='same',data_format='channels_first')(conv4)
+    conv4 = Conv2D(64, (3, 3), activation='relu', padding='same',data_format='channels_last')(conv4)
     #
     up2 = UpSampling2D(size=(2, 2))(conv4)
-    up2 = concatenate([conv1,up2], axis=1)
-    conv5 = Conv2D(32, (3, 3), activation='relu', padding='same',data_format='channels_first')(up2)
+    up2 = concatenate([conv1,up2], axis=3)
+    conv5 = Conv2D(32, (3, 3), activation='relu', padding='same',data_format='channels_last')(up2)
     conv5 = Dropout(0.2)(conv5)
-    conv5 = Conv2D(32, (3, 3), activation='relu', padding='same',data_format='channels_first')(conv5)
+    conv5 = Conv2D(32, (3, 3), activation='relu', padding='same',data_format='channels_last')(conv5)
     #
-    conv6 = Conv2D(2, (1, 1), activation='relu',padding='same',data_format='channels_first')(conv5)
+    conv6 = Conv2D(2, (1, 1), activation='relu',padding='same',data_format='channels_last')(conv5)
     conv6 = core.Reshape((2,patch_height*patch_width))(conv6)
     conv6 = core.Permute((2,1))(conv6)
     ############
@@ -73,7 +73,7 @@ def get_unet(n_ch,patch_height,patch_width):
 #Define the neural network gnet
 #you need change function call "get_unet" to "get_gnet" in line 166 before use this network
 def get_gnet(n_ch,patch_height,patch_width):
-    inputs = Input((n_ch, patch_height, patch_width))
+    inputs = Input((patch_height, patch_width, n_ch))
     conv1 = Convolution2D(32, 3, 3, activation='relu', border_mode='same')(inputs)
     conv1 = Dropout(0.2)(conv1)
     conv1 = Convolution2D(32, 3, 3, activation='relu', border_mode='same')(conv1)
@@ -98,17 +98,17 @@ def get_gnet(n_ch,patch_height,patch_width):
     conv5 = Dropout(0.2)(conv5)
     conv5 = Convolution2D(128, 3, 3, activation='relu', border_mode='same')(conv5)
     #
-    up2 = merge([UpSampling2D(size=(2, 2))(conv5), conv4], mode='concat', concat_axis=1)
+    up2 = concatenate([UpSampling2D(size=(2, 2))(conv5), conv4], concat_axis=3)
     conv6 = Convolution2D(64, 3, 3, activation='relu', border_mode='same')(up2)
     conv6 = Dropout(0.2)(conv6)
     conv6 = Convolution2D(64, 3, 3, activation='relu', border_mode='same')(conv6)
     #
-    up3 = merge([UpSampling2D(size=(2, 2))(conv6), conv3], mode='concat', concat_axis=1)
+    up3 = concatenate([UpSampling2D(size=(2, 2))(conv6), conv3], concat_axis=3)
     conv7 = Convolution2D(32, 3, 3, activation='relu', border_mode='same')(up3)
     conv7 = Dropout(0.2)(conv7)
     conv7 = Convolution2D(32, 3, 3, activation='relu', border_mode='same')(conv7)
     #
-    up4 = merge([UpSampling2D(size=(2, 2))(conv7), conv2], mode='concat', concat_axis=1)
+    up4 = concatenate([UpSampling2D(size=(2, 2))(conv7), conv2], concat_axis=3)
     conv8 = Convolution2D(16, 3, 3, activation='relu', border_mode='same')(up4)
     conv8 = Dropout(0.2)(conv8)
     conv8 = Convolution2D(16, 3, 3, activation='relu', border_mode='same')(conv8)
@@ -132,7 +132,7 @@ def get_gnet(n_ch,patch_height,patch_width):
     return model
 
 #========= Load settings from Config file
-config = ConfigParser.RawConfigParser()
+config = configparser.ConfigParser()
 config.read('configuration.txt')
 #patch to the datasets
 path_data = config.get('data paths', 'path_local')
@@ -166,8 +166,8 @@ n_ch = patches_imgs_train.shape[1]
 patch_height = patches_imgs_train.shape[2]
 patch_width = patches_imgs_train.shape[3]
 model = get_unet(n_ch, patch_height, patch_width)  #the U-net model
-print "Check: final output of the network:"
-print model.output_shape
+print("Check: final output of the network:")
+print(model.output_shape)
 plot(model, to_file='./'+name_experiment+'/'+name_experiment + '_model.png')   #check how the model looks like
 json_string = model.to_json()
 open('./'+name_experiment+'/'+name_experiment +'_architecture.json', 'w').write(json_string)
